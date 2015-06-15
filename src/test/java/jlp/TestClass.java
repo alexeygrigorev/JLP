@@ -21,7 +21,8 @@ public class TestClass {
     public TestClass(int primitiveConstructorParam, String constructorParam) {
     }
 
-    public void methodName(SomeInnerClass innerClassMethodParam) {
+    // TODO: HANDLE
+    public void methodName(TestClass.SomeInnerClass innerClassMethodParam) {
     }
 
     public void methodName2(SomeClass otherClassMethodParam) {

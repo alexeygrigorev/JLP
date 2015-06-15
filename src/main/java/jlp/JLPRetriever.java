@@ -30,7 +30,11 @@ public class JLPRetriever {
     private final ImportReader importReader = new ImportReader();
 
     public ClassIdentifiers read(String filePath) throws Exception {
-        CompilationUnit cu = JavaParser.parse(new File(filePath));
+        return read(new File(filePath));
+    }
+
+    public ClassIdentifiers read(File file) throws Exception {
+        CompilationUnit cu = JavaParser.parse(file);
         Map<String, String> imports = importReader.read(cu);
 
         PackageDeclaration packageDeclaration = cu.getPackage();
@@ -39,7 +43,7 @@ public class JLPRetriever {
         DeclarationTypeNameVisitor dtv = new DeclarationTypeNameVisitor(imports, packageName);
         dtv.visit(cu, null);
 
-        String className = extractClassNameFromFilePath(filePath);
+        String className = extractClassNameFromFilePath(file.getAbsolutePath());
         return new ClassIdentifiers(packageName, className, dtv.result);
     }
 
