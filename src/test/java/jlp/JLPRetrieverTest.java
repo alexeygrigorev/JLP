@@ -53,7 +53,7 @@ public class JLPRetrieverTest {
         Identifier innerClassMethodParam = index.get("innerClassMethodParam");
         assertEquals(Location.METHOD_PARAM, innerClassMethodParam.getLocation());
         // it's in the package so "jlp" gets appended
-        assertEquals("jlp.SomeInnerClass", innerClassMethodParam.getType().getFullName());
+        assertEquals("jlp.TestClass.SomeInnerClass", innerClassMethodParam.getType().getFullName());
 
         Identifier otherClassMethodParam = index.get("otherClassMethodParam");
         assertEquals(Location.METHOD_PARAM, otherClassMethodParam.getLocation());
@@ -105,6 +105,34 @@ public class JLPRetrieverTest {
         assertTrue(vararg.getType().isArray());
         assertEquals("java.lang.String", vararg.getType().getFullName());
         assertEquals("...", vararg.getType().getArrayType());
+    }
+
+    @Test
+    public void innerClassesDotted() throws Exception {
+        String path = "./src/test/java/jlp/TestClass.java";
+        ClassIdentifiers ids = JLPRetriever.INSTANCE.read(path);
+        Map<String, Identifier> index = buildIndex(ids);
+
+        Identifier innerClass = index.get("innerClassMethodParam");
+        assertEquals(Location.METHOD_PARAM, innerClass.getLocation());
+        assertEquals("jlp.TestClass.SomeInnerClass", innerClass.getType().getFullName());
+
+        Identifier innerClassMethodParamShortTypeName = index.get("innerClassMethodParamShortTypeName");
+        assertEquals(Location.METHOD_PARAM, innerClassMethodParamShortTypeName.getLocation());
+        assertEquals("jlp.TestClass.SomeInnerClass", innerClassMethodParamShortTypeName.getType()
+                .getFullName());
+    }
+
+    @Test
+    public void typeParameters() throws Exception {
+        String path = "./src/test/java/jlp/GenericTest.java";
+        ClassIdentifiers ids = JLPRetriever.INSTANCE.read(path);
+
+        Identifier p1 = ids.getIds().get(0);
+        assertEquals("GENERIC_PARAM", p1.getType().getFullName());
+
+        Identifier p2 = ids.getIds().get(1);
+        assertEquals("GENERIC_PARAM", p2.getType().getFullName());
     }
 
     private Map<String, Identifier> buildIndex(ClassIdentifiers ids) {

@@ -1,6 +1,7 @@
 package jlp;
 
 import java.io.File;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -13,7 +14,10 @@ import jlp.pojos.Identifier.Location;
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.PackageDeclaration;
+import com.github.javaparser.ast.TypeParameter;
+import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
+import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.body.VariableDeclaratorId;
@@ -22,6 +26,8 @@ import com.github.javaparser.ast.type.Type;
 import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 
 public class JLPRetriever {
 
@@ -40,14 +46,18 @@ public class JLPRetriever {
         PackageDeclaration packageDeclaration = cu.getPackage();
         String packageName = packageDeclaration.getName().toStringWithoutComments();
 
-        DeclarationTypeNameVisitor dtv = new DeclarationTypeNameVisitor(imports, packageName);
-        dtv.visit(cu, null);
+        InnerTypeVisitor itp = new InnerTypeVisitor();
+        itp.visit(cu, "");
 
-        String className = extractClassNameFromFilePath(file.getAbsolutePath());
-        return new ClassIdentifiers(packageName, className, dtv.result);
+        DeclarationTypeNameVisitor dtv = new DeclarationTypeNameVisitor(imports, packageName,
+                itp.innerTypesFullNames);
+        dtv.visit(cu, "");
+
+        String arg = extractparamFromFilePath(file.getAbsolutePath());
+        return new ClassIdentifiers(packageName, arg, dtv.result);
     }
 
-    private String extractClassNameFromFilePath(String filePath) {
+    private String extractparamFromFilePath(String filePath) {
         int lastSlash = filePath.lastIndexOf('/');
         int lastBackSlash = filePath.lastIndexOf('\\');
         if (lastBackSlash > lastSlash) {
@@ -57,40 +67,68 @@ public class JLPRetriever {
         return filePath.substring(lastSlash + 1, filePath.length() - ".java".length());
     }
 
-    private static class DeclarationTypeNameVisitor extends VoidVisitorAdapter<Void> {
+    private static class DeclarationTypeNameVisitor extends VoidVisitorAdapter<String> {
 
         private static final Set<String> PRIMITIVES = ImmutableSet.of("byte", "short", "int", "long",
                 "float", "double", "boolean", "char");
 
         private Map<String, String> imports;
         private String packageName;
+        private Map<String, String> innerTypesFullNames;
 
+        private Set<String> typeParameters = Sets.newLinkedHashSet();
         private List<Identifier> result = Lists.newArrayList();
 
-        public DeclarationTypeNameVisitor(Map<String, String> imports, String packageName) {
+        public DeclarationTypeNameVisitor(Map<String, String> imports, String packageName,
+                Map<String, String> innerTypesFullNames) {
             this.imports = imports;
             this.packageName = packageName;
+            this.innerTypesFullNames = innerTypesFullNames;
         }
 
         @Override
-        public void visit(VariableDeclarationExpr n, Void arg) {
-            Type type = n.getType();
-            List<VariableDeclarator> variables = n.getVars();
+        public void visit(VariableDeclarationExpr varDeclaration, String arg) {
+            Type type = varDeclaration.getType();
+            List<VariableDeclarator> variables = varDeclaration.getVars();
             processDeclaration(type, variables, Location.LOCAL);
         }
 
         @Override
-        public void visit(FieldDeclaration n, Void arg) {
-            Type type = n.getType();
-            List<VariableDeclarator> variables = n.getVariables();
+        public void visit(ClassOrInterfaceDeclaration classDec, String arg) {
+            List<TypeParameter> params = denull(classDec.getTypeParameters());
+            for (TypeParameter tp : params) {
+                typeParameters.add(tp.getName());
+            }
+            super.visit(classDec, arg);
+            for (TypeParameter tp : params) {
+                typeParameters.remove(tp.getName());
+            }
+        }
+
+        @Override
+        public void visit(FieldDeclaration field, String arg) {
+            Type type = field.getType();
+            List<VariableDeclarator> variables = field.getVariables();
             processDeclaration(type, variables, Location.FIELD);
         }
 
-        public void visit(Parameter n, Void arg) {
-            Type type = n.getType();
-            VariableDeclaratorId id = n.getId();
+        @Override
+        public void visit(MethodDeclaration method, String arg) {
+            List<TypeParameter> params = denull(method.getTypeParameters());
+            for (TypeParameter tp : params) {
+                typeParameters.add(tp.getName());
+            }
+            super.visit(method, arg);
+            for (TypeParameter tp : params) {
+                typeParameters.remove(tp.getName());
+            }
+        }
+
+        public void visit(Parameter parameter, String arg) {
+            Type type = parameter.getType();
+            VariableDeclaratorId id = parameter.getId();
             String shortTypeName = type.toStringWithoutComments();
-            if (n.isVarArgs()) {
+            if (parameter.isVarArgs()) {
                 shortTypeName = shortTypeName + "...";
             }
 
@@ -117,20 +155,31 @@ public class JLPRetriever {
                 return new ComplexType(shortTypeName);
             }
 
+            if (typeParameters.contains(shortTypeName)) {
+                ComplexType type = new ComplexType("GENERIC_PARAM");
+                type.setParameters(shortTypeName); 
+                return type;
+            }
+
             if (isFullyQualified(shortTypeName)) {
                 return handleFullTypeName(shortTypeName);
             }
 
-            if (imports.containsKey(shortTypeName)) {
-                String fullName = imports.get(shortTypeName);
+            String typeName = shortTypeName;
+            if (innerTypesFullNames.containsKey(shortTypeName)) {
+                typeName = innerTypesFullNames.get(shortTypeName);
+            }
+
+            if (imports.containsKey(typeName)) {
+                String fullName = imports.get(typeName);
                 return new ComplexType(fullName);
             }
 
-            return handleTypeNameSpecialCases(shortTypeName);
+            return handleTypeNameSpecialCases(typeName);
         }
 
         private ComplexType handleFullTypeName(String fullName) {
-            // when it has generic param
+            // when it has generic arg
             int first = fullName.indexOf('<');
             if (first >= 0) {
                 String cleanFullName = fullName.substring(0, first);
@@ -226,9 +275,43 @@ public class JLPRetriever {
             if (typeName.endsWith("...")) {
                 return isFullyQualified(typeName.substring(0, typeName.length() - 3));
             }
-            return typeName.contains(".");
+            if (typeName.contains(".")) {
+                return !startsWithUpperChar(typeName);
+            } else {
+                return false;
+            }
         }
 
+        private boolean startsWithUpperChar(String typeName) {
+            // let's hope the code follows the convention
+            char firstChar = typeName.charAt(0);
+            return Character.toUpperCase(firstChar) == firstChar;
+        }
+    }
+
+    private static class InnerTypeVisitor extends VoidVisitorAdapter<String> {
+        private final Map<String, String> innerTypesFullNames = Maps.newLinkedHashMap();
+
+        @Override
+        public void visit(ClassOrInterfaceDeclaration n, String arg) {
+            if (arg.isEmpty()) {
+                String name = n.getName();
+                super.visit(n, name);
+            } else {
+                String name = arg + "." + n.getName();
+                innerTypesFullNames.put(n.getName(), name);
+                super.visit(n, name);
+            }
+        }
+
+    }
+
+    private static <E> List<E> denull(List<E> list) {
+        if (list == null) {
+            return Collections.emptyList();
+        } else {
+            return list;
+        }
     }
 
 }

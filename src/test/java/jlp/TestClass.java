@@ -1,15 +1,11 @@
 package jlp;
 
-import java.io.File;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import com.github.javaparser.JavaParser;
-import com.github.javaparser.ast.CompilationUnit;
-import com.github.javaparser.ast.Node;
-import com.github.javaparser.ast.PackageDeclaration;
+import jlp.TestClass.SomeInnerClass.CrazyStuff;
 
 public class TestClass {
 
@@ -21,8 +17,13 @@ public class TestClass {
     public TestClass(int primitiveConstructorParam, String constructorParam) {
     }
 
-    // TODO: HANDLE
     public void methodName(TestClass.SomeInnerClass innerClassMethodParam) {
+    }
+
+    public void methodName3(SomeInnerClass innerClassMethodParamShortTypeName) {
+    }
+
+    public void methodName4(CrazyStuff innerInnerClassParam) {
     }
 
     public void methodName2(SomeClass otherClassMethodParam) {
@@ -60,6 +61,11 @@ public class TestClass {
             return innerClassVariable;
         }
 
+        static class CrazyStuff {
+            public CrazyStuff() {
+            }
+        }
+        
     }
 
 }
